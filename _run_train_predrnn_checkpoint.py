@@ -18,6 +18,76 @@ torch.backends.cudnn.benchmark = True
 print(f"Device: {torch.cuda.device_count()} GPUs - {torch.cuda.get_device_name(0)}")
 print()
 
+def save_model(epoch, trainstep, last_training_indices, data_loader, original_dataset_indices, resume_training_epoch,
+               model, optim, epoch_train_loss, train_loss, val_loss, save_path):
+    check_point = {
+        "epoch": epoch, 
+        "trainstep": trainstep,
+        "last_training_indices": last_training_indices,
+        "data_loader": data_loader,
+        "original_dataset_indices": original_dataset_indices,
+        "resume_training_epoch": resume_training_epoch,
+        "epoch_train_loss": epoch_train_loss,
+        "model_state_dict": model.state_dict(),
+        "optim_state_dict": optim.state_dict(),
+        "train_loss": train_loss,
+        "val_loss": val_loss,
+    }
+    torch.save(check_point, save_path)
+    model_name = save_path.split("/")[-1]
+    print(f"Save model {model_name}") 
+
+# !!!!!!!!!!!!!!!! Change here !!!!!!!!!!!!!!!!
+def load_dataset(data_dir, forecast_horizon, manual_shuffle, batch_size):
+    sequence_id = np.loadtxt(f"{data_dir}/sequence_id_{forecast_horizon}.txt", delimiter=",")
+    indices = np.arange(len(sequence_id))
+    if manual_shuffle == True:
+        np.random.shuffle(indices)
+    dataset = SkyImagesDataset(data_dir, indices, forecast_horizon=forecast_horizon)
+    dataset_dataloader = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=False)
+    print(f"Load {data_dir} succesfully")
+    return dataset, dataset_dataloader
+
+class SkyImagesDataset(torch.utils.data.Dataset):
+    
+    def __init__(self, data_dir, indices = [], forecast_horizon="10m"):
+        """
+        indices: Shufflted index list
+        """
+        assert forecast_horizon in ["10m", "1h", "4h"], ("Forecast horizon can be 10m, 1h, or 4h")
+        self.sequence_id = np.loadtxt(f"{data_dir}/sequence_id_{forecast_horizon}.txt", delimiter=",")
+        self.image_dir = f"{data_dir}/sky_images"
+
+        self.last_training_indices = 0
+        self.indices = indices
+
+        # "trainstep": trainstep,
+        # "last_training_indices": last_training_indices,
+        # "data_loader": data_loader,
+        # "original_dataset_indices": original_dataset_indices,
+        # "resume_training_epoch": resume_training_epoch,
+        # "epoch_train_loss": epoch_train_loss,
+
+    def __len__(self):
+        size = len(self.indices)
+        return size
+
+    def __getitem__(self, idx):
+        self.last_training_indices = self.indices[idx]
+        id_list = np.array(self.sequence_id[self.indices[idx]]).astype(int)
+
+        images = []
+        for image_id in id_list:
+            image_id = str(int(image_id))
+            # image = plt.imread(f"{self.image_dir}/{image_id[:8]}/{image_id}.raw.jpg")
+            image = np.load(f"{self.image_dir}/{image_id[:8]}/{image_id}.raw.jpg.npy")
+            # image = self.image_dict[image_id]
+            images.append(image)
+        images = np.array(images)
+        input_image_sequence = images[:6]
+        target_image_sequence = images[6:]
+        return id_list, input_image_sequence, target_image_sequence
+
 
 # ***************************************************************************************************************
 # ***************************************************************************************************************
@@ -31,16 +101,16 @@ train_batch_size = 8
 val_batch_size = 64
 # Init dataset
 training_dir = "../processed_dataset/training/"
-training_set = SkyImagesDataset(data_dir=training_dir, forecast_horizon=forecast_horizon)
-training_set_dataloader = DataLoader(dataset=training_set, batch_size=train_batch_size, shuffle=True, num_workers=16)
+training_set, training_set_dataloader = load_dataset(training_dir, forecast_horizon, manual_shuffle=True, batch_size=train_batch_size)
+
 # Validation 2011
 validation_2011_dir = "../processed_dataset/validation_2011/"
-validation_2011 = SkyImagesDataset(data_dir=validation_2011_dir, forecast_horizon=forecast_horizon)
-validation_2011_dataloader = DataLoader(dataset=validation_2011, batch_size=val_batch_size, shuffle=False, num_workers=16)
+validation_2011, validation_2011_dataloader = load_dataset(validation_2011_dir, forecast_horizon, manual_shuffle=False, batch_size=val_batch_size)
+
 # Validation 2012
 validation_2012_dir = "../processed_dataset/validation_2012/"
-validation_2012 = SkyImagesDataset(data_dir=validation_2012_dir, forecast_horizon=forecast_horizon)
-validation_2012_dataloader = DataLoader(dataset=validation_2012, batch_size=val_batch_size, shuffle=False, num_workers=16)
+validation_2012, validation_2012_dataloader = load_dataset(validation_2012_dir, forecast_horizon, manual_shuffle=False, batch_size=val_batch_size)
+
 # Test 2015
 # test_2015_dir = "../processed_dataset/test_2015/"
 # test_2015 = SkyImagesDataset(data_dir=test_2015_dir, forecast_horizon=forecast_horizon)
@@ -70,16 +140,37 @@ train_loss = []
 val_loss = []
 current_epoch = 0
 nb_epochs = 5
+trainstep = 0
+resume_training_epoch = False
 
 
 # ******************************************* Load model (delte later) ******************************************
+
+# Load final checkpoint
 load_epoch = 1
-checkpoint = torch.load(f"../checkpoint/predrnn_{forecast_horizon}/predrnn_{load_epoch}epoch.pt")
+load_train_step = 61
+epoch_complete = False
+if epoch_complete:
+    checkpoint = torch.load(f"../checkpoint/predrnn_{forecast_horizon}/predrnn_{load_epoch}epoch.pt")
+    current_epoch = load_epoch + 1
+else:
+    checkpoint = torch.load(f"../checkpoint/predrnn_{forecast_horizon}/predrnn_{load_epoch}epoch_{load_train_step}_step.pt")
+    current_epoch = load_epoch
+
 predrnn.load_state_dict(checkpoint["model_state_dict"])
 optim.load_state_dict(checkpoint["optim_state_dict"])
 train_loss = checkpoint["train_loss"]
 val_loss = checkpoint["val_loss"]
-current_epoch = load_epoch + 1
+
+if load_epoch > 0:
+    # Variable for continue training at the middle of the epoch
+    trainstep = checkpoint["trainstep"]
+    last_training_indices = checkpoint["last_training_indices"]
+    training_set_dataloader = checkpoint["data_loader"]
+    original_dataset_indices = checkpoint["original_dataset_indices"]
+    resume_training_epoch = checkpoint["resume_training_epoch"]
+    checkpoint_epoch_train_loss = checkpoint["epoch_train_loss"]
+
 del checkpoint
 print(f"Load model at epoch {load_epoch} succesfully \n")
 # ******************************************* Load model (delte later) ******************************************
@@ -102,9 +193,19 @@ for epoch in range(current_epoch, nb_epochs):
     #     for g in optim.param_groups:
     #         g['lr'] = 0.0003
 
+    # !!!!!!!!!! if continue train => no shuffle !!!!!!!!!!
+    if (resume_training_epoch):
+        epoch_train_loss = checkpoint_epoch_train_loss
+        print(f"Resume training at epoch = {epoch}, last_training_indices = {last_training_indices}")
+        training_set_dataloader.dataset.indices = original_dataset_indices[list(original_dataset_indices).index(last_training_indices)+1:]
+    else:
+        epoch_train_loss = 0
+        print(f"Start new training at epoch = {epoch}")
+        training_set, training_set_dataloader = load_dataset(training_dir, forecast_horizon, manual_shuffle=True, batch_size=train_batch_size)
+        original_dataset_indices = np.copy(training_set_dataloader.dataset.indices)
+
     # Training
     predrnn.train()
-    epoch_train_loss = 0
     for i, sample in enumerate(tqdm(training_set_dataloader)):
         # if i < 12935:
         #     continue
@@ -125,8 +226,8 @@ for epoch in range(current_epoch, nb_epochs):
         optim.step()
         epoch_train_loss += loss.item() * input_image_sequence.shape[0]
         # ************************************ Fix later ************************************
-        if i % 1000 == 0:
-            grid = torchvision.utils.make_grid(input_image_sequence[0,:], nrow=4)
+        if i % 10 == 0 and i > 0 :
+            grid = torchvision.utils.make_grid(input_image_sequence[0,:], nrow=6)
             grid = grid.permute(1,2,0).detach().cpu().numpy()
             plt.figure(figsize=(10, 10))
             plt.title("input")
@@ -146,14 +247,24 @@ for epoch in range(current_epoch, nb_epochs):
             plt.title("prediction")
             plt.imsave(f"../checkpoint/predrnn_{forecast_horizon}/prediction_{i}.png", grid)
             plt.clf()
+
+            # Code to save checkpoint here
+            trainstep = list(original_dataset_indices).index(training_set_dataloader.dataset.last_training_indices) // input_image_sequence.shape[0]
+            save_path = f"../checkpoint/predrnn_{forecast_horizon}/predrnn_{epoch}epoch_{trainstep}_step.pt"
+            save_model(epoch=epoch, trainstep=trainstep, last_training_indices=training_set_dataloader.dataset.last_training_indices, 
+            data_loader=training_set_dataloader, original_dataset_indices=original_dataset_indices, resume_training_epoch=True,
+               model=predrnn, optim=optim, epoch_train_loss=epoch_train_loss, train_loss=train_loss, val_loss=val_loss, save_path=save_path)
+
         # ************************************ Fix later ************************************
 
 
     train_loss.append(epoch_train_loss/len(training_set))
     # print("Finish epoch {}. Train_loss = {}".format(epoch, train_loss[-1]))
     save_path = f"../checkpoint/predrnn_{forecast_horizon}/predrnn_{epoch}epoch.pt"
-    save_model(epoch=epoch, model=predrnn, optim=optim, train_loss=train_loss, val_loss=val_loss, save_path=save_path)
-
+    save_model(epoch=epoch, trainstep=-1, last_training_indices=-1, 
+        data_loader=training_set_dataloader, original_dataset_indices=original_dataset_indices, resume_training_epoch=False,
+        model=predrnn, optim=optim, epoch_train_loss=epoch_train_loss, train_loss=train_loss, val_loss=val_loss, save_path=save_path)
+    resume_training_epoch = False
 
     # Validation
     predrnn.eval()
@@ -176,7 +287,10 @@ for epoch in range(current_epoch, nb_epochs):
 
     # Save model
     save_path = f"../checkpoint/predrnn_{forecast_horizon}/predrnn_{epoch}epoch.pt"
-    save_model(epoch=epoch, model=predrnn, optim=optim, train_loss=train_loss, val_loss=val_loss, save_path=save_path)
+    save_model(epoch=epoch, trainstep=-1, last_training_indices=-1, 
+        data_loader=training_set_dataloader, original_dataset_indices=original_dataset_indices, resume_training_epoch=False,
+        model=predrnn, optim=optim, epoch_train_loss=epoch_train_loss, train_loss=train_loss, val_loss=val_loss, save_path=save_path)
+    resume_training_epoch = False
         
     # Save learning curve
     learning_curve_save_path = f"../checkpoint/predrnn_{forecast_horizon}/learning_curve_{epoch}epoch"

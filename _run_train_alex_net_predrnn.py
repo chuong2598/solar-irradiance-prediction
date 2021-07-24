@@ -109,7 +109,7 @@ for epoch in range(current_epoch, nb_epochs):
         target_image_sequence = torch.cat([input_image_sequence[:, 1:], target_image_sequence], axis=1)
         solar_power = torch.tensor(solar_power).float().to(device=device).view(-1,1)
         # PredRnn prediction
-        image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1] + 1)
+        image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1] + 1, device=device)
         image_pred = image_pred/2 + 0.5
         predrnn_loss = l1_loss(image_pred, target_image_sequence)
         # Alex_net prediction
@@ -165,7 +165,7 @@ for epoch in range(current_epoch, nb_epochs):
                 target_image_sequence = torch.cat([input_image_sequence[:, 1:], target_image_sequence], axis=1)
                 solar_power = torch.tensor(solar_power).float().to(device=device).view(-1,1)
                 # PredRnn prediction
-                image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1] + 1)
+                image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1] + 1, device=device)
                 image_pred = image_pred/2 + 0.5
                 predrnn_loss = l1_loss(image_pred, target_image_sequence)
                 # Alex_net prediction

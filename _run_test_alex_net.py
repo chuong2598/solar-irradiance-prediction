@@ -25,7 +25,7 @@ print()
 # ***************************************************************************************************************
 # ***************************************************************************************************************
 train_batch_size = 64
-val_batch_size = 1024
+val_batch_size = 512
 # Init dataset
 # training_dir = "../processed_dataset/training/"
 # training_set = SolarPowerDataset(samples_dir=training_dir, dataset_name="training")

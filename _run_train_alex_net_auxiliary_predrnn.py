@@ -153,11 +153,11 @@ for epoch in range(current_epoch, nb_epochs):
         solar_power = (solar_power).float().to(device=device).view(-1,1)
         auxiliary = auxiliary.float().to(device=device)
         # PredRnn prediction
-        image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1])
+        image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1], device=device)
         image_pred = image_pred/2 + 0.5
         predrnn_loss = l1_loss(image_pred, target_image_sequence)
         # Auxiliary prediction
-        auxiliary_pred = auxiliary_lstm(auxiliary, total_length=target_image_sequence.shape[1])
+        auxiliary_pred = auxiliary_lstm(auxiliary, total_length=target_image_sequence.shape[1], device=device)
         # Alex_net prediction
         image_pred = image_pred.contiguous().view(-1,3,128,128)
         auxiliary_pred = auxiliary_pred.contiguous().view(-1,auxiliary_indim)
@@ -221,11 +221,11 @@ for epoch in range(current_epoch, nb_epochs):
                 solar_power = (solar_power).float().to(device=device).view(-1,1)
                 auxiliary = auxiliary.float().to(device=device)
                 # PredRnn prediction
-                image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1])
+                image_pred = predrnn(input_image_sequence, total_length=target_image_sequence.shape[1], device=device)
                 image_pred = image_pred/2 + 0.5
                 predrnn_loss = l1_loss(image_pred, target_image_sequence)
                 # Auxiliary prediction
-                auxiliary_pred = auxiliary_lstm(auxiliary, total_length=target_image_sequence.shape[1])
+                auxiliary_pred = auxiliary_lstm(auxiliary, total_length=target_image_sequence.shape[1], device=device)
                 # Alex_net prediction
                 image_pred = image_pred.contiguous().view(-1,3,128,128)
                 auxiliary_pred = auxiliary_pred.contiguous().view(-1,auxiliary_indim)

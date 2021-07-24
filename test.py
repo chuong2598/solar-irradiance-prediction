@@ -1,9 +1,9 @@
 from utils import *
 import torch
 
-forecast_horizon = "1h"
-epoch = 49
-training_auxiliary_path = f"../checkpoint/alex_net_{forecast_horizon}/auxiliary_lstm_{epoch}epoch.pt"
+forecast_horizon = "4h"
+epoch = 43
+training_auxiliary_path = f"../checkpoint/auxiliary_lstm_{forecast_horizon}/auxiliary_lstm_{epoch}epoch.pt"
 auxiliary_lstm_checkpoint = torch.load(training_auxiliary_path)
 
 train_loss = auxiliary_lstm_checkpoint["train_loss"]
